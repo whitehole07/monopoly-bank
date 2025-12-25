@@ -30,13 +30,15 @@
   <h1>🏦 Monopoly NFC Bank - Leaderboard</h1>  <!-- Player Leaderboard -->  <div class="card">
     <h3>Leaderboard (by balance)</h3>
     <div id="playerList" class="muted">No players registered</div>
-    <button class="primary" onclick="scanForNewPlayer()">Add New Player (Scan Card)</button>
+    <button class="primary" onclick="startAddPlayerScan()">Add New Player (Scan Card)</button>
     <div id="statusMsg"></div>
   </div>  <!-- Inspect Player -->  <div id="inspectCard" class="card" style="display:none"></div>
 </div><script>
 let db;
 let scanning = false;
+let scannedUID = null;
 let inspectedUID = null;
+let scanContext = null; // 'add' or 'inspect'
 const statusMsg = document.getElementById('statusMsg');
 
 const openReq = indexedDB.open('bankDB', 1);
@@ -49,18 +51,20 @@ openReq.onsuccess = e => {
   refreshPlayerList();
 };
 
-async function scanCard(callback) {
+async function scanCard(callback, context) {
   if (!('NDEFReader' in window)) return alert('Web NFC not supported');
   if (scanning) return;
   scanning = true;
+  scanContext = context;
   statusMsg.innerText = 'Scanning for NFC card...';
+
   const reader = new NDEFReader();
   await reader.scan();
   reader.onreading = e => {
     scanning = false;
-    statusMsg.innerText = 'Card detected!';
+    scannedUID = e.serialNumber;
+    callback(scannedUID);
     setTimeout(() => statusMsg.innerText = '', 2000);
-    callback(e.serialNumber);
   };
 }
 
@@ -80,7 +84,7 @@ function refreshPlayerList() {
       const div = document.createElement('div');
       div.className = 'list-item';
       div.innerHTML = `<span>${p.name} — ${p.balance}</span><button class='danger' onclick='removePlayer("${p.uid}");event.stopPropagation()'>✕</button>`;
-      div.onclick = () => inspectPlayer(p.uid);
+      div.onclick = () => startInspectPlayerScan(p.uid);
       list.appendChild(div);
     });
   };
@@ -93,39 +97,38 @@ function removePlayer(uid) {
   tx.oncomplete = () => { refreshPlayerList(); statusMsg.innerText='Player removed'; setTimeout(()=>statusMsg.innerText='',2000); };
 }
 
-async function scanForNewPlayer() {
-  statusMsg.innerText = 'Press your card to register';
-  await scanCard(uid => {
-    const tx = db.transaction('players', 'readonly');
-    const store = tx.objectStore('players');
-    const req = store.get(uid);
-    req.onsuccess = () => {
-      if (req.result) { alert('Player already registered'); return; }
-      const name = prompt('Player name');
-      if (!name) return;
-      const player = { uid, name, balance: 1500 };
-      const wtx = db.transaction('players', 'readwrite');
-      wtx.objectStore('players').put(player);
-      wtx.oncomplete = () => { refreshPlayerList(); statusMsg.innerText='Player added'; setTimeout(()=>statusMsg.innerText='',2000); };
-    };
-  });
+/* ---------- ADD PLAYER FLOW ---------- */
+function startAddPlayerScan() {
+  scanCard(handleAddPlayerScan, 'add');
 }
 
-function inspectPlayer(uid) {
+function handleAddPlayerScan(uid) {
+  const tx = db.transaction('players', 'readonly');
+  const store = tx.objectStore('players');
+  const req = store.get(uid);
+  req.onsuccess = () => {
+    if (req.result) { statusMsg.innerText='Player already registered'; setTimeout(()=>statusMsg.innerText='',2000); return; }
+    const name = prompt('Enter player name');
+    if (!name) return;
+    const player = { uid, name, balance: 1500 };
+    const wtx = db.transaction('players', 'readwrite');
+    wtx.objectStore('players').put(player);
+    wtx.oncomplete = () => { refreshPlayerList(); statusMsg.innerText='Player added'; setTimeout(()=>statusMsg.innerText='',2000); };
+  };
+}
+
+/* ---------- INSPECT PLAYER FLOW ---------- */
+function startInspectPlayerScan(uid) {
   inspectedUID = uid;
   document.getElementById('inspectCard').style.display = 'block';
-  document.getElementById('inspectCard').innerHTML = `<p>Press 'Scan Card' to confirm identity</p><button class='primary' onclick='scanForInspect()'>Scan Card</button>`;
+  document.getElementById('inspectCard').innerHTML = `<p>Press 'Scan Card' to confirm player identity</p><button class='primary' onclick='scanCard(handleInspectScan,"inspect")'>Scan Card</button>`;
 }
 
-async function scanForInspect() {
-  if (!inspectedUID) return;
-  statusMsg.innerText = 'Scan the player card to proceed';
-  await scanCard(scannedUID => {
-    if (scannedUID !== inspectedUID) { alert('Wrong card scanned'); return; }
-    loadInspectPlayer(scannedUID);
-    statusMsg.innerText = 'Player verified';
-    setTimeout(()=>statusMsg.innerText='',2000);
-  });
+function handleInspectScan(uid) {
+  if (uid !== inspectedUID) { alert('Wrong card scanned'); return; }
+  loadInspectPlayer(uid);
+  statusMsg.innerText='Player verified';
+  setTimeout(()=>statusMsg.innerText='',2000);
 }
 
 function loadInspectPlayer(uid) {
@@ -178,12 +181,7 @@ function executePayment(fromUid) {
         store.put(to);
       };
     }
-    tx.oncomplete = () => {
-      refreshPlayerList();
-      loadInspectPlayer(fromUid);
-      statusMsg.innerText = 'Payment successful';
-      setTimeout(()=>statusMsg.innerText='',2000);
-    };
+    tx.oncomplete = () => { refreshPlayerList(); loadInspectPlayer(fromUid); statusMsg.innerText='Payment successful'; setTimeout(()=>statusMsg.innerText='',2000); };
   };
 }
 
