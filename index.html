@@ -5,51 +5,64 @@
   <title>Monopoly NFC Bank</title>
   <link rel="manifest" href="manifest.json" />
   <style>
-    body { font-family: system-ui, sans-serif; background:#f5f5f5; padding:20px }
-    h1 { font-size:1.4rem }
-    button { padding:10px 14px; margin:4px; font-size:1rem }
-    .card { background:white; padding:12px; margin-top:10px; border-radius:8px }
+    body { font-family: system-ui, sans-serif; background:#f4f6f8; margin:0; padding:16px }
+    h1 { font-size:1.4rem; margin-bottom:12px }
+    .container { max-width:480px; margin:auto }
+    .card { background:#fff; border-radius:12px; padding:16px; box-shadow:0 4px 10px rgba(0,0,0,.08); margin-bottom:12px }
+    button { width:100%; padding:12px; font-size:1rem; border:none; border-radius:8px; margin-top:8px }
+    .primary { background:#007aff; color:#fff }
+    .danger { background:#ff3b30; color:#fff }
+    .secondary { background:#34c759; color:#fff }
+    .muted { color:#666; font-size:.9rem }
   </style>
 </head>
 <body>
-  <h1>🏦 Monopoly NFC Bank</h1><button onclick="startScan()">Scan NFC Card</button> <button onclick="addMoney()">Add Money</button> <button onclick="removeMoney()">Remove Money</button>
-
-  <div id="status"></div>
-  <div id="player" class="card"></div><script>
-let currentUID = null;
+<div class="container">
+  <h1>🏦 Monopoly NFC Bank</h1>  <div class="card">
+    <button class="primary" onclick="scanCard()">Scan / Select Card</button>
+    <p id="status" class="muted">No card scanned</p>
+  </div>  <div id="playerCard" class="card" style="display:none"></div>  <div id="actions" class="card" style="display:none">
+    <button class="secondary" onclick="modifyBalance(200)">+200</button>
+    <button class="secondary" onclick="modifyBalance(100)">+100</button>
+    <button class="danger" onclick="modifyBalance(-100)">-100</button>
+    <button class="danger" onclick="modifyBalance(-200)">-200</button>
+  </div>
+</div><script>
 let db;
+let activeUID = null;
 
-// IndexedDB setup
-const request = indexedDB.open('bankDB', 1);
-request.onupgradeneeded = e => {
-  db = e.target.result;
+const openReq = indexedDB.open('bankDB', 1);
+openReq.onupgradeneeded = e => {
+  const db = e.target.result;
   db.createObjectStore('players', { keyPath: 'uid' });
 };
-request.onsuccess = e => db = e.target.result;
+openReq.onsuccess = e => db = e.target.result;
 
-async function startScan() {
+async function scanCard() {
   if (!('NDEFReader' in window)) {
     alert('Web NFC not supported');
     return;
   }
+  document.getElementById('status').innerText = 'Waiting for card…';
   const reader = new NDEFReader();
   await reader.scan();
   reader.onreading = event => {
-    currentUID = event.serialNumber;
-    loadPlayer();
+    activeUID = event.serialNumber;
+    loadOrCreatePlayer();
   };
 }
 
-function loadPlayer() {
+function loadOrCreatePlayer() {
   const tx = db.transaction('players', 'readonly');
   const store = tx.objectStore('players');
-  const req = store.get(currentUID);
+  const req = store.get(activeUID);
   req.onsuccess = () => {
     if (!req.result) {
-      const name = prompt('New player name');
-      savePlayer({ uid: currentUID, name, balance: 1500 });
+      const name = prompt('Player name');
+      const player = { uid: activeUID, name, balance: 1500 };
+      savePlayer(player);
     } else {
-      render(req.result);
+      renderPlayer(req.result);
     }
   };
 }
@@ -57,32 +70,28 @@ function loadPlayer() {
 function savePlayer(player) {
   const tx = db.transaction('players', 'readwrite');
   tx.objectStore('players').put(player);
-  tx.oncomplete = () => render(player);
+  tx.oncomplete = () => renderPlayer(player);
 }
 
-function render(p) {
-  document.getElementById('player').innerHTML =
-    `<strong>${p.name}</strong><br>Balance: ${p.balance}`;
+function renderPlayer(p) {
+  document.getElementById('status').innerText = `Card UID: ${p.uid}`;
+  document.getElementById('playerCard').style.display = 'block';
+  document.getElementById('actions').style.display = 'block';
+  document.getElementById('playerCard').innerHTML = `
+    <h3>${p.name}</h3>
+    <p><strong>Balance:</strong> ${p.balance}</p>
+  `;
 }
 
-function addMoney() {
-  changeBalance(200);
-}
-
-function removeMoney() {
-  changeBalance(-200);
-}
-
-function changeBalance(amount) {
-  if (!currentUID) return alert('Scan card first');
+function modifyBalance(delta) {
   const tx = db.transaction('players', 'readwrite');
   const store = tx.objectStore('players');
-  const req = store.get(currentUID);
+  const req = store.get(activeUID);
   req.onsuccess = () => {
     const p = req.result;
-    p.balance += amount;
+    p.balance += delta;
     store.put(p);
-    render(p);
+    renderPlayer(p);
   };
 }
 </script></body>
