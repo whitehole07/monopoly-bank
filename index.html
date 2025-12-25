@@ -5,18 +5,24 @@
   <title>Monopoly NFC Bank</title>
   <link rel="manifest" href="manifest.json" />
   <style>
-    body { font-family: system-ui, sans-serif; background:#f4f6f8; margin:0; padding:16px }
-    h1 { font-size:1.5rem; margin-bottom:12px }
+    body { font-family: system-ui, sans-serif; background:#f0f2f5; margin:0; padding:16px }
+    h1 { font-size:1.6rem; margin-bottom:16px; text-align:center; color:#333 }
     .container { max-width:520px; margin:auto }
-    .card { background:#fff; border-radius:12px; padding:16px; box-shadow:0 4px 10px rgba(0,0,0,.08); margin-bottom:12px }
-    button { padding:10px; font-size:1rem; border:none; border-radius:8px; margin-top:6px; width:100% }
+    .card { background:#fff; border-radius:12px; padding:16px; box-shadow:0 4px 12px rgba(0,0,0,.08); margin-bottom:12px; transition: transform .1s, box-shadow .1s }
+    .card:active { transform: scale(0.98); box-shadow:0 2px 6px rgba(0,0,0,.12) }
+    button { padding:12px; font-size:1rem; border:none; border-radius:8px; margin-top:8px; width:100%; cursor:pointer; transition: background .2s }
     .primary { background:#007aff; color:#fff }
+    .primary:hover { background:#005ecb }
     .secondary { background:#34c759; color:#fff }
+    .secondary:hover { background:#28a745 }
     .danger { background:#ff3b30; color:#fff }
-    .muted { color:#666; font-size:.9rem }
-    .list-item { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; cursor:pointer }
-    input { width:100%; padding:8px; font-size:1rem; margin-top:6px }
-    select { width:100%; padding:8px; font-size:1rem; margin-top:6px }
+    .danger:hover { background:#cc2a20 }
+    .muted { color:#666; font-size:.9rem; margin-top:4px }
+    .list-item { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; cursor:pointer; padding:6px; border-radius:6px; transition: background .2s }
+    .list-item:hover { background:#e9ecef }
+    input { width:100%; padding:10px; font-size:1rem; margin-top:6px; border:1px solid #ccc; border-radius:6px }
+    select { width:100%; padding:10px; font-size:1rem; margin-top:6px; border:1px solid #ccc; border-radius:6px }
+    #statusMsg { font-size:.95rem; color:#007aff; margin-top:6px }
   </style>
 </head>
 <body>
@@ -25,11 +31,13 @@
     <h3>Leaderboard (by balance)</h3>
     <div id="playerList" class="muted">No players registered</div>
     <button class="primary" onclick="scanForNewPlayer()">Add New Player (Scan Card)</button>
+    <div id="statusMsg"></div>
   </div>  <!-- Inspect Player -->  <div id="inspectCard" class="card" style="display:none"></div>
 </div><script>
 let db;
 let scanning = false;
 let inspectedUID = null;
+const statusMsg = document.getElementById('statusMsg');
 
 const openReq = indexedDB.open('bankDB', 1);
 openReq.onupgradeneeded = e => {
@@ -45,15 +53,17 @@ async function scanCard(callback) {
   if (!('NDEFReader' in window)) return alert('Web NFC not supported');
   if (scanning) return;
   scanning = true;
+  statusMsg.innerText = 'Scanning for NFC card...';
   const reader = new NDEFReader();
   await reader.scan();
   reader.onreading = e => {
     scanning = false;
+    statusMsg.innerText = 'Card detected!';
+    setTimeout(() => statusMsg.innerText = '', 2000);
     callback(e.serialNumber);
   };
 }
 
-/* ---------- PLAYER LIST ---------- */
 function refreshPlayerList() {
   const tx = db.transaction('players', 'readonly');
   const store = tx.objectStore('players');
@@ -65,7 +75,6 @@ function refreshPlayerList() {
       list.innerText = 'No players registered';
       return;
     }
-    // sort by balance descending
     const sorted = req.result.sort((a,b) => b.balance - a.balance);
     sorted.forEach(p => {
       const div = document.createElement('div');
@@ -81,45 +90,41 @@ function removePlayer(uid) {
   if (!confirm('Remove player?')) return;
   const tx = db.transaction('players', 'readwrite');
   tx.objectStore('players').delete(uid);
-  tx.oncomplete = refreshPlayerList;
+  tx.oncomplete = () => { refreshPlayerList(); statusMsg.innerText='Player removed'; setTimeout(()=>statusMsg.innerText='',2000); };
 }
 
-/* ---------- ADD PLAYER ---------- */
 async function scanForNewPlayer() {
+  statusMsg.innerText = 'Press your card to register';
   await scanCard(uid => {
     const tx = db.transaction('players', 'readonly');
     const store = tx.objectStore('players');
     const req = store.get(uid);
     req.onsuccess = () => {
-      if (req.result) {
-        alert('Player already registered');
-        return;
-      }
+      if (req.result) { alert('Player already registered'); return; }
       const name = prompt('Player name');
       if (!name) return;
       const player = { uid, name, balance: 1500 };
       const wtx = db.transaction('players', 'readwrite');
       wtx.objectStore('players').put(player);
-      wtx.oncomplete = refreshPlayerList;
+      wtx.oncomplete = () => { refreshPlayerList(); statusMsg.innerText='Player added'; setTimeout(()=>statusMsg.innerText='',2000); };
     };
   });
 }
 
-/* ---------- INSPECT / PAY ---------- */
 function inspectPlayer(uid) {
   inspectedUID = uid;
   document.getElementById('inspectCard').style.display = 'block';
-  document.getElementById('inspectCard').innerHTML = `<p>Press 'Scan Card' to confirm player identity</p><button class='primary' onclick='scanForInspect()'>Scan Card</button>`;
+  document.getElementById('inspectCard').innerHTML = `<p>Press 'Scan Card' to confirm identity</p><button class='primary' onclick='scanForInspect()'>Scan Card</button>`;
 }
 
 async function scanForInspect() {
   if (!inspectedUID) return;
+  statusMsg.innerText = 'Scan the player card to proceed';
   await scanCard(scannedUID => {
-    if (scannedUID !== inspectedUID) {
-      alert('Wrong card scanned');
-      return;
-    }
+    if (scannedUID !== inspectedUID) { alert('Wrong card scanned'); return; }
     loadInspectPlayer(scannedUID);
+    statusMsg.innerText = 'Player verified';
+    setTimeout(()=>statusMsg.innerText='',2000);
   });
 }
 
@@ -156,13 +161,13 @@ function renderInspect(p) {
 function executePayment(fromUid) {
   const amount = parseInt(document.getElementById('amount').value);
   const target = document.getElementById('target').value;
-  if (!amount || amount <= 0) return alert('Invalid amount');
+  if (!amount || amount <= 0) { alert('Invalid amount'); return; }
 
   const tx = db.transaction('players', 'readwrite');
   const store = tx.objectStore('players');
   store.get(fromUid).onsuccess = e => {
     const from = e.target.result;
-    if (from.balance < amount) return alert('Insufficient funds');
+    if (from.balance < amount) { alert('Insufficient funds'); return; }
     from.balance -= amount;
     store.put(from);
 
@@ -176,6 +181,8 @@ function executePayment(fromUid) {
     tx.oncomplete = () => {
       refreshPlayerList();
       loadInspectPlayer(fromUid);
+      statusMsg.innerText = 'Payment successful';
+      setTimeout(()=>statusMsg.innerText='',2000);
     };
   };
 }
@@ -183,6 +190,8 @@ function executePayment(fromUid) {
 function closeInspect() {
   inspectedUID = null;
   document.getElementById('inspectCard').style.display = 'none';
+  statusMsg.innerText = 'Inspection closed';
+  setTimeout(()=>statusMsg.innerText='',2000);
 }
 </script></body>
 </html>
