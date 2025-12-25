@@ -15,11 +15,13 @@
     .primary:hover { background:#005ecb }
     .secondary { background:#34c759; color:#fff }
     .secondary:hover { background:#28a745 }
-    .danger { background:#ff3b30; color:#fff }
-    .danger:hover { background:#cc2a20 }
+    .danger { background:#ff3b30; color:#fff; font-size:0.8rem; padding:4px 8px; border-radius:50%; margin-left:8px }
     .muted { color:#666; font-size:.9rem; margin-top:4px }
-    .list-item { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; cursor:pointer; padding:6px; border-radius:6px; transition: background .2s }
+    .list-item { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; cursor:pointer; padding:8px; border-radius:8px; transition: background .2s; background:#fafafa }
     .list-item:hover { background:#e9ecef }
+    .player-info { display:flex; flex-direction: column }
+    .player-name { font-weight:600; font-size:1rem }
+    .player-balance { font-weight:700; font-size:1.2rem; color:#007aff }
     input { width:100%; padding:10px; font-size:1rem; margin-top:6px; border:1px solid #ccc; border-radius:6px }
     select { width:100%; padding:10px; font-size:1rem; margin-top:6px; border:1px solid #ccc; border-radius:6px }
     #statusMsg { font-size:.95rem; color:#007aff; margin-top:6px }
@@ -83,7 +85,7 @@ function refreshPlayerList() {
     sorted.forEach(p => {
       const div = document.createElement('div');
       div.className = 'list-item';
-      div.innerHTML = `<span>${p.name} — ${p.balance}</span><button class='danger' onclick='removePlayer("${p.uid}");event.stopPropagation()'>✕</button>`;
+      div.innerHTML = `<div class='player-info'><span class='player-name'>${p.name}</span><span class='player-balance'>${p.balance}</span></div><button class='danger' onclick='removePlayer("${p.uid}");event.stopPropagation()'>✕</button>`;
       div.onclick = () => startInspectPlayerScan(p.uid);
       list.appendChild(div);
     });
@@ -97,7 +99,6 @@ function removePlayer(uid) {
   tx.oncomplete = () => { refreshPlayerList(); statusMsg.innerText='Player removed'; setTimeout(()=>statusMsg.innerText='',2000); };
 }
 
-/* ---------- ADD PLAYER FLOW ---------- */
 function startAddPlayerScan() {
   scanCard(handleAddPlayerScan, 'add');
 }
@@ -117,7 +118,6 @@ function handleAddPlayerScan(uid) {
   };
 }
 
-/* ---------- INSPECT PLAYER FLOW ---------- */
 function startInspectPlayerScan(uid) {
   inspectedUID = uid;
   document.getElementById('inspectCard').style.display = 'block';
