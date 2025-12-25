@@ -1,0 +1,89 @@
+<!DOCTYPE html><html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Monopoly NFC Bank</title>
+  <link rel="manifest" href="manifest.json" />
+  <style>
+    body { font-family: system-ui, sans-serif; background:#f5f5f5; padding:20px }
+    h1 { font-size:1.4rem }
+    button { padding:10px 14px; margin:4px; font-size:1rem }
+    .card { background:white; padding:12px; margin-top:10px; border-radius:8px }
+  </style>
+</head>
+<body>
+  <h1>🏦 Monopoly NFC Bank</h1><button onclick="startScan()">Scan NFC Card</button> <button onclick="addMoney()">Add Money</button> <button onclick="removeMoney()">Remove Money</button>
+
+  <div id="status"></div>
+  <div id="player" class="card"></div><script>
+let currentUID = null;
+let db;
+
+// IndexedDB setup
+const request = indexedDB.open('bankDB', 1);
+request.onupgradeneeded = e => {
+  db = e.target.result;
+  db.createObjectStore('players', { keyPath: 'uid' });
+};
+request.onsuccess = e => db = e.target.result;
+
+async function startScan() {
+  if (!('NDEFReader' in window)) {
+    alert('Web NFC not supported');
+    return;
+  }
+  const reader = new NDEFReader();
+  await reader.scan();
+  reader.onreading = event => {
+    currentUID = event.serialNumber;
+    loadPlayer();
+  };
+}
+
+function loadPlayer() {
+  const tx = db.transaction('players', 'readonly');
+  const store = tx.objectStore('players');
+  const req = store.get(currentUID);
+  req.onsuccess = () => {
+    if (!req.result) {
+      const name = prompt('New player name');
+      savePlayer({ uid: currentUID, name, balance: 1500 });
+    } else {
+      render(req.result);
+    }
+  };
+}
+
+function savePlayer(player) {
+  const tx = db.transaction('players', 'readwrite');
+  tx.objectStore('players').put(player);
+  tx.oncomplete = () => render(player);
+}
+
+function render(p) {
+  document.getElementById('player').innerHTML =
+    `<strong>${p.name}</strong><br>Balance: ${p.balance}`;
+}
+
+function addMoney() {
+  changeBalance(200);
+}
+
+function removeMoney() {
+  changeBalance(-200);
+}
+
+function changeBalance(amount) {
+  if (!currentUID) return alert('Scan card first');
+  const tx = db.transaction('players', 'readwrite');
+  const store = tx.objectStore('players');
+  const req = store.get(currentUID);
+  req.onsuccess = () => {
+    const p = req.result;
+    p.balance += amount;
+    store.put(p);
+    render(p);
+  };
+}
+</script></body>
+</html>
