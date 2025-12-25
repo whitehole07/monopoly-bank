@@ -15,7 +15,7 @@
     .primary:hover { background:#005ecb }
     .secondary { background:#34c759; color:#fff }
     .secondary:hover { background:#28a745 }
-    .danger { background:#ff3b30; color:#fff; font-size:0.9rem; padding:2px 6px; border-radius:4px; cursor:pointer }
+    .danger { background:#ff3b30; color:#fff; font-size:0.8rem; padding:2px 6px; border-radius:4px; cursor:pointer; flex-shrink:0; width:auto; }
     .muted { color:#666; font-size:.9rem; margin-top:4px }
     .list-item { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; cursor:pointer; padding:8px; border-radius:8px; transition: background .2s; background:#fafafa }
     .list-item:hover { background:#e9ecef }
@@ -29,29 +29,23 @@
 </head>
 <body>
 <div class="container">
-  <h1>🏦 Monopoly NFC Bank - Leaderboard</h1>  <!-- Player Leaderboard -->  <div class="card">
+  <h1>🏦 Monopoly NFC Bank - Leaderboard</h1>  <div class="card">
     <h3>Leaderboard (by balance)</h3>
     <div id="playerList" class="muted">No players registered</div>
     <button class="primary" onclick="startAddPlayerScan()">Add New Player (Scan Card)</button>
     <div id="statusMsg"></div>
-  </div>  <!-- Inspect Player -->  <div id="inspectCard" class="card" style="display:none"></div>
+  </div>  <div id="inspectCard" class="card" style="display:none"></div>
 </div><script>
 let db;
 let scanning = false;
 let scannedUID = null;
 let inspectedUID = null;
-let scanContext = null; // 'add' or 'inspect'
+let scanContext = null;
 const statusMsg = document.getElementById('statusMsg');
 
 const openReq = indexedDB.open('bankDB', 1);
-openReq.onupgradeneeded = e => {
-  const db = e.target.result;
-  db.createObjectStore('players', { keyPath: 'uid' });
-};
-openReq.onsuccess = e => {
-  db = e.target.result;
-  refreshPlayerList();
-};
+openReq.onupgradeneeded = e => { db = e.target.result; db.createObjectStore('players', { keyPath: 'uid' }); };
+openReq.onsuccess = e => { db = e.target.result; refreshPlayerList(); };
 
 async function scanCard(callback, context) {
   if (!('NDEFReader' in window)) return alert('Web NFC not supported');
@@ -59,15 +53,9 @@ async function scanCard(callback, context) {
   scanning = true;
   scanContext = context;
   statusMsg.innerText = 'Scanning for NFC card...';
-
   const reader = new NDEFReader();
   await reader.scan();
-  reader.onreading = e => {
-    scanning = false;
-    scannedUID = e.serialNumber;
-    callback(scannedUID);
-    setTimeout(() => statusMsg.innerText = '', 2000);
-  };
+  reader.onreading = e => { scanning = false; scannedUID = e.serialNumber; callback(scannedUID); setTimeout(() => statusMsg.innerText = '', 2000); };
 }
 
 function refreshPlayerList() {
@@ -77,10 +65,7 @@ function refreshPlayerList() {
   req.onsuccess = () => {
     const list = document.getElementById('playerList');
     list.innerHTML = '';
-    if (req.result.length === 0) {
-      list.innerText = 'No players registered';
-      return;
-    }
+    if (req.result.length === 0) { list.innerText = 'No players registered'; return; }
     const sorted = req.result.sort((a,b) => b.balance - a.balance);
     sorted.forEach(p => {
       const div = document.createElement('div');
@@ -99,10 +84,7 @@ function removePlayer(uid) {
   tx.oncomplete = () => { refreshPlayerList(); statusMsg.innerText='Player removed'; setTimeout(()=>statusMsg.innerText='',2000); };
 }
 
-function startAddPlayerScan() {
-  scanCard(handleAddPlayerScan, 'add');
-}
-
+function startAddPlayerScan() { scanCard(handleAddPlayerScan, 'add'); }
 function handleAddPlayerScan(uid) {
   const tx = db.transaction('players', 'readonly');
   const store = tx.objectStore('players');
@@ -118,78 +100,17 @@ function handleAddPlayerScan(uid) {
   };
 }
 
-function startInspectPlayerScan(uid) {
-  inspectedUID = uid;
-  document.getElementById('inspectCard').style.display = 'block';
-  document.getElementById('inspectCard').innerHTML = `<p>Press 'Scan Card' to confirm player identity</p><button class='primary' onclick='scanCard(handleInspectScan,"inspect")'>Scan Card</button>`;
-}
-
-function handleInspectScan(uid) {
-  if (uid !== inspectedUID) { alert('Wrong card scanned'); return; }
-  loadInspectPlayer(uid);
-  statusMsg.innerText='Player verified';
-  setTimeout(()=>statusMsg.innerText='',2000);
-}
-
-function loadInspectPlayer(uid) {
-  const tx = db.transaction('players', 'readonly');
-  tx.objectStore('players').get(uid).onsuccess = e => renderInspect(e.target.result);
-}
-
+function startInspectPlayerScan(uid) { inspectedUID = uid; document.getElementById('inspectCard').style.display = 'block'; document.getElementById('inspectCard').innerHTML = `<p>Press 'Scan Card' to confirm player identity</p><button class='primary' onclick='scanCard(handleInspectScan,"inspect")'>Scan Card</button>`; }
+function handleInspectScan(uid) { if (uid !== inspectedUID) { alert('Wrong card scanned'); return; } loadInspectPlayer(uid); statusMsg.innerText='Player verified'; setTimeout(()=>statusMsg.innerText='',2000); }
+function loadInspectPlayer(uid) { const tx = db.transaction('players', 'readonly'); tx.objectStore('players').get(uid).onsuccess = e => renderInspect(e.target.result); }
 function renderInspect(p) {
   const card = document.getElementById('inspectCard');
-  card.innerHTML = `
-    <h3>${p.name}</h3>
-    <p><strong>Balance:</strong> ${p.balance}</p>
-    <input id='amount' type='number' placeholder='Amount' />
-    <select id='target'>
-      <option value='bank'>Pay Bank</option>
-    </select>
-    <button class='secondary' onclick='executePayment("${p.uid}")'>Confirm Payment</button>
-    <button class='danger' onclick='closeInspect()'>Close</button>
-  `;
-
+  card.innerHTML = `<h3>${p.name}</h3><p><strong>Balance:</strong> ${p.balance}</p><input id='amount' type='number' placeholder='Amount' /><select id='target'><option value='bank'>Pay Bank</option></select><button class='secondary' onclick='executePayment("${p.uid}")'>Confirm Payment</button><button class='danger' onclick='closeInspect()'>Close</button>`;
   const sel = document.getElementById('target');
   const tx2 = db.transaction('players', 'readonly');
-  tx2.objectStore('players').getAll().onsuccess = e => {
-    e.target.result.filter(x => x.uid !== p.uid).forEach(x => {
-      const opt = document.createElement('option');
-      opt.value = x.uid;
-      opt.text = x.name;
-      sel.appendChild(opt);
-    });
-  };
+  tx2.objectStore('players').getAll().onsuccess = e => { e.target.result.filter(x => x.uid !== p.uid).forEach(x => { const opt = document.createElement('option'); opt.value = x.uid; opt.text = x.name; sel.appendChild(opt); }); };
 }
-
-function executePayment(fromUid) {
-  const amount = parseInt(document.getElementById('amount').value);
-  const target = document.getElementById('target').value;
-  if (!amount || amount <= 0) { alert('Invalid amount'); return; }
-
-  const tx = db.transaction('players', 'readwrite');
-  const store = tx.objectStore('players');
-  store.get(fromUid).onsuccess = e => {
-    const from = e.target.result;
-    if (from.balance < amount) { alert('Insufficient funds'); return; }
-    from.balance -= amount;
-    store.put(from);
-
-    if (target !== 'bank') {
-      store.get(target).onsuccess = ev => {
-        const to = ev.target.result;
-        to.balance += amount;
-        store.put(to);
-      };
-    }
-    tx.oncomplete = () => { refreshPlayerList(); loadInspectPlayer(fromUid); statusMsg.innerText='Payment successful'; setTimeout(()=>statusMsg.innerText='',2000); };
-  };
-}
-
-function closeInspect() {
-  inspectedUID = null;
-  document.getElementById('inspectCard').style.display = 'none';
-  statusMsg.innerText = 'Inspection closed';
-  setTimeout(()=>statusMsg.innerText='',2000);
-}
+function executePayment(fromUid) { const amount = parseInt(document.getElementById('amount').value); const target = document.getElementById('target').value; if (!amount || amount <= 0) { alert('Invalid amount'); return; } const tx = db.transaction('players', 'readwrite'); const store = tx.objectStore('players'); store.get(fromUid).onsuccess = e => { const from = e.target.result; if (from.balance < amount) { alert('Insufficient funds'); return; } from.balance -= amount; store.put(from); if (target !== 'bank') { store.get(target).onsuccess = ev => { const to = ev.target.result; to.balance += amount; store.put(to); }; } tx.oncomplete = () => { refreshPlayerList(); loadInspectPlayer(fromUid); statusMsg.innerText='Payment successful'; setTimeout(()=>statusMsg.innerText='',2000); }; }; }
+function closeInspect() { inspectedUID = null; document.getElementById('inspectCard').style.display = 'none'; statusMsg.innerText = 'Inspection closed'; setTimeout(()=>statusMsg.innerText='',2000); }
 </script></body>
 </html>
